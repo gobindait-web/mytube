@@ -1,0 +1,546 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MyTube - Video Sharing</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0f0f0f;color:#fff;
+font-family:Arial,sans-serif}
+header{display:flex;align-items:center;gap:15px;
+padding:13px 22px;background:#181818;
+position:sticky;top:0;z-index:5;flex-wrap:wrap}
+.logo{font-size:26px;font-weight:bold;cursor:pointer}
+.logo span{color:#ff3030}
+input,textarea{background:#222;color:white;border:1px solid #444;
+border-radius:9px;padding:12px;width:100%;font:inherit}
+button{background:#333;color:white;border:0;
+border-radius:9px;padding:11px 15px;cursor:pointer}
+button:hover{background:#555}
+.red{background:#e62121}
+.red:hover{background:#ba1717}
+.search{flex:1;max-width:650px}
+.layout{display:flex}
+aside{width:195px;min-height:90vh;
+padding:15px;border-right:1px solid #333;flex-shrink:0}
+aside button{display:block;width:100%;text-align:left;margin:8px 0}
+main{flex:1;min-width:0;padding:25px}
+.grid{display:grid;grid-template-columns:
+repeat(auto-fill,minmax(250px,1fr));gap:20px}
+.card{background:#1d1d1d;border-radius:12px;
+overflow:hidden;cursor:pointer}
+.card img{width:100%;aspect-ratio:16/9;
+object-fit:cover;background:#333}
+.card .details{padding:12px}
+.card h3{font-size:16px;margin:3px 0 9px}
+.muted{color:#aaa;font-size:13px}
+.panel{background:#202020;padding:22px;border-radius:14px;
+max-width:650px;margin:20px auto}
+.panel input,.panel textarea{margin:8px 0 14px}
+.hidden{display:none!important}
+.modal{position:fixed;inset:0;background:#000e;
+z-index:10;overflow:auto;padding:30px 12px}
+.modalBox{background:#1c1c1c;max-width:850px;
+margin:auto;padding:20px;border-radius:14px}
+video{width:100%;aspect-ratio:16/9;background:black}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.space{justify-content:space-between}
+.comment{border-bottom:1px solid #333;padding:10px 0}
+small{color:#aaa}
+.status{margin:12px 0;color:#86efac;overflow-wrap:anywhere}
+h1,h2,h3{overflow-wrap:anywhere}
+@media(max-width:700px){
+aside{display:none}
+header{padding:12px}
+.search{order:3;min-width:100%;max-width:none}
+main{padding:14px}
+.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+}
+@media(max-width:420px){
+.grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header>
+<div class="logo" onclick="showHome()">
+<span>▶</span> MyTube
+</div>
+<input class="search" id="search"
+placeholder="Search videos..."
+oninput="renderVideos()">
+<button onclick="showHome()">Home</button>
+<button onclick="showUpload()">+ Upload</button>
+<button id="accountBtn" class="red" onclick="showAuth()">
+Login
+</button>
+</header>
+
+<div class="layout">
+<aside>
+<button onclick="showHome()">🏠 Home</button>
+<button onclick="showUpload()">⬆ Upload Video</button>
+<button onclick="showChannel()">👤 My Channel</button>
+<button onclick="showHome()">🎬 Videos</button>
+</aside>
+
+<main>
+<p id="status" class="status"></p>
+
+<section id="home">
+<h2>Recommended Videos</h2>
+<div id="videoGrid" class="grid"></div>
+</section>
+
+<section id="authPage" class="panel hidden">
+<h2>Welcome to MyTube</h2>
+<p class="muted">Create an account or sign in.</p>
+<input id="name" placeholder="Your name">
+<input id="email" type="email" placeholder="Email address">
+<input id="password" type="password" placeholder="Password">
+<div class="row">
+<button class="red" onclick="signUp()">Sign Up</button>
+<button onclick="signIn()">Login</button>
+<button onclick="resetPassword()">Reset Password</button>
+</div>
+</section>
+
+<section id="channelPage" class="panel hidden">
+<h2>My Channel</h2>
+<input id="channelName" placeholder="Channel name">
+<textarea id="channelDescription"
+placeholder="Channel description"></textarea>
+<button class="red" onclick="saveChannel()">
+Create / Update Channel
+</button>
+<p id="channelInfo"></p>
+</section>
+
+<section id="uploadPage" class="panel hidden">
+<h2>Upload Video</h2>
+<p class="muted">
+Sign in and create a channel before uploading.
+Only upload videos you have permission to share.
+</p>
+<input id="videoTitle" placeholder="Video title">
+<textarea id="videoDescription"
+placeholder="Video description"></textarea>
+<label>Select MP4 or WebM video (maximum 50 MB)</label>
+<input type="file" id="videoFile"
+accept="video/mp4,video/webm">
+<button class="red" id="uploadBtn" onclick="uploadVideo()">
+Upload Video
+</button>
+<p id="uploadProgress" class="muted"></p>
+</section>
+
+</main>
+</div>
+
+<section id="watchModal" class="modal hidden">
+<div class="modalBox">
+<button onclick="closeWatch()">✕ Close</button>
+<div id="playerContainer"></div>
+<h2 id="watchTitle"></h2>
+<p id="watchChannel" class="muted"></p>
+<div class="row">
+<button id="likeBtn" onclick="toggleLike()">♡ Like</button>
+<button id="subscribeBtn" onclick="toggleSubscribe()">
+Subscribe
+</button>
+</div>
+<p id="videoDescriptionView"></p>
+<h3>Comments</h3>
+<textarea id="commentText"
+placeholder="Write a comment..."></textarea>
+<button onclick="postComment()">Post Comment</button>
+<div id="comments"></div>
+</div>
+</section>
+
+<script>
+// CONFIGURATION: REPLACE BOTH VALUES
+const SUPABASE_URL = "https://pdnhfitrorxrtmeaijlf.supabase.co";
+const SUPABASE_KEY = "sb_publishable_5madGVpTVt5BYy3BZrSEyg_7_n1r8C4";
+
+const configured =
+ !SUPABASE_URL.startsWith("YOUR_") &&
+ !SUPABASE_KEY.startsWith("YOUR_");
+
+const db = configured
+ ? window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY)
+ : null;
+
+let user = null;
+let channel = null;
+let videos = [];
+let currentVideo = null;
+let currentLikes = [];
+let currentSubscriptions = [];
+
+const el = id => document.getElementById(id);
+
+function escapeHTML(value) {
+ return String(value ?? "").replace(/[&<>"']/g, c => ({
+  "&":"&amp;","<":"&lt;",">":"&gt;",
+  '"':"&quot;","'":"&#39;"
+ }[c]));
+}
+
+function message(text) {
+ el("status").textContent = text;
+}
+
+function showPage(id) {
+ ["home","authPage","channelPage","uploadPage"]
+ .forEach(x => el(x).classList.toggle("hidden",x!==id));
+ window.scrollTo(0,0);
+}
+
+function showHome() {
+ showPage("home");
+ loadVideos();
+}
+function showAuth() {
+ if(user) return signOut();
+ showPage("authPage");
+}
+function showChannel() {
+ if(!user) return showAuth();
+ showPage("channelPage");
+ loadChannel();
+}
+function showUpload() {
+ if(!user) return showAuth();
+ if(!channel) {
+  message("Create your channel first.");
+  return showChannel();
+ }
+ showPage("uploadPage");
+}
+
+async function initialize() {
+ if(!db) {
+  message("Set your Supabase URL and Publishable Key in the code.");
+  return;
+ }
+ const {data} = await db.auth.getUser();
+ user = data.user;
+ await refreshUser();
+
+ db.auth.onAuthStateChange((_event,session)=>{
+  user = session?.user || null;
+  setTimeout(refreshUser,0);
+ });
+
+ await loadVideos();
+}
+
+async function refreshUser() {
+ el("accountBtn").textContent = user ? "Logout" : "Login";
+ channel = null;
+ if(user) await loadChannel();
+}
+
+async function signUp() {
+ const email=el("email").value.trim();
+ const password=el("password").value;
+ const name=el("name").value.trim() || "MyTube User";
+ if(!email || password.length<8) {
+  return alert("Enter email and password of at least 8 characters.");
+ }
+ const {error}=await db.auth.signUp({
+  email,password,
+  options:{
+   data:{name},
+   emailRedirectTo:location.origin+location.pathname
+  }
+ });
+ if(error) return alert(error.message);
+ alert("Signup submitted. Check your email if confirmation is required.");
+}
+
+async function signIn() {
+ const {error}=await db.auth.signInWithPassword({
+  email:el("email").value.trim(),
+  password:el("password").value
+ });
+ if(error) return alert(error.message);
+ showHome();
+ message("Logged in successfully.");
+}
+
+async function signOut() {
+ await db.auth.signOut();
+ user=null;
+ channel=null;
+ showHome();
+ message("Logged out.");
+}
+
+async function resetPassword() {
+ const email=el("email").value.trim();
+ if(!email) return alert("Enter your email first.");
+ const {error}=await db.auth.resetPasswordForEmail(email,{
+  redirectTo:location.origin+location.pathname
+ });
+ alert(error ? error.message : "Check your email for reset instructions.");
+}
+
+async function loadChannel() {
+ if(!user) return;
+ const {data,error}=await db.from("channels")
+  .select("*").eq("owner_id",user.id).maybeSingle();
+ if(error) return message(error.message);
+ channel=data;
+ el("channelName").value=data?.name || "";
+ el("channelDescription").value=data?.description || "";
+ el("channelInfo").textContent=data
+  ? "Channel ready: "+data.name
+  : "You have not created a channel yet.";
+}
+
+async function saveChannel() {
+ if(!user) return showAuth();
+ const name=el("channelName").value.trim();
+ const description=el("channelDescription").value.trim();
+ if(!name) return alert("Enter channel name.");
+ const values={name,description,owner_id:user.id};
+ let result;
+ if(channel) {
+  result=await db.from("channels")
+   .update({name,description})
+   .eq("id",channel.id).select().single();
+ } else {
+  result=await db.from("channels")
+   .insert(values).select().single();
+ }
+ if(result.error) return alert(result.error.message);
+ channel=result.data;
+ message("Channel saved successfully!");
+ showUpload();
+}
+
+async function uploadVideo() {
+ if(!user || !channel) return showChannel();
+ const file=el("videoFile").files[0];
+ const title=el("videoTitle").value.trim();
+ const description=el("videoDescription").value.trim();
+ if(!file || !title) return alert("Enter title and choose a video.");
+ if(!["video/mp4","video/webm"].includes(file.type))
+  return alert("Only MP4 and WebM files are supported.");
+ if(file.size>50*1024*1024)
+  return alert("Maximum file size is 50 MB.");
+
+ const btn=el("uploadBtn");
+ btn.disabled=true;
+ el("uploadProgress").textContent="Uploading video...";
+
+ try {
+  const extension=file.type==="video/webm"?"webm":"mp4";
+  const fileName=user.id+"/"+crypto.randomUUID()+"."+extension;
+
+  const upload=await db.storage.from("videos")
+   .upload(fileName,file,{contentType:file.type});
+
+  if(upload.error) throw upload.error;
+
+  const {data:urlData}=db.storage.from("videos")
+   .getPublicUrl(fileName);
+
+  const result=await db.from("videos").insert({
+   channel_id:channel.id,
+   title,description,
+   video_url:urlData.publicUrl,
+   visibility:"public"
+  });
+
+  if(result.error) {
+   await db.storage.from("videos").remove([fileName]);
+   throw result.error;
+  }
+
+  el("videoTitle").value="";
+  el("videoDescription").value="";
+  el("videoFile").value="";
+  el("uploadProgress").textContent="Upload successful!";
+  showHome();
+  message("Video uploaded successfully!");
+
+ } catch(error) {
+  el("uploadProgress").textContent="Upload failed: "+error.message;
+ } finally {
+  btn.disabled=false;
+ }
+}
+
+async function loadVideos() {
+ if(!db) return;
+ const {data,error}=await db.from("videos")
+ .select("*,channels(name,owner_id)")
+ .eq("visibility","public")
+ .order("created_at",{ascending:false})
+ .limit(100);
+ if(error) return message(error.message);
+ videos=data || [];
+ renderVideos();
+}
+
+function renderVideos() {
+ const grid=el("videoGrid");
+ grid.replaceChildren();
+ const q=el("search").value.trim().toLowerCase();
+ const list=videos.filter(v=>
+  v.title.toLowerCase().includes(q) ||
+  (v.channels?.name||"").toLowerCase().includes(q)
+ );
+ if(!list.length) {
+  grid.textContent="No videos found. Upload your first video!";
+  return;
+ }
+ list.forEach(v=>{
+  const card=document.createElement("div");
+  card.className="card";
+  const thumb=document.createElement("div");
+  thumb.style.cssText="aspect-ratio:16/9;background:#292929;display:grid;place-items:center;font-size:60px";
+  thumb.textContent="▶";
+  if(v.thumbnail_url) {
+   const img=document.createElement("img");
+   img.src=v.thumbnail_url;
+   img.onerror=()=>img.remove();
+   thumb.replaceChildren(img);
+  }
+  const details=document.createElement("div");
+  details.className="details";
+  const title=document.createElement("h3");
+  title.textContent=v.title;
+  const channelName=document.createElement("p");
+  channelName.className="muted";
+  channelName.textContent=v.channels?.name||"Unknown Channel";
+  details.append(title,channelName);
+  card.append(thumb,details);
+  card.onclick=()=>watchVideo(v.id);
+  grid.appendChild(card);
+ });
+}
+
+async function watchVideo(id) {
+ currentVideo=videos.find(v=>v.id===id);
+ if(!currentVideo) return;
+ const v=currentVideo;
+ el("watchModal").classList.remove("hidden");
+ const player=document.createElement("video");
+ player.src=v.video_url;
+ player.controls=true;
+ player.autoplay=true;
+ player.playsInline=true;
+ el("playerContainer").replaceChildren(player);
+ el("watchTitle").textContent=v.title;
+ el("watchChannel").textContent=v.channels?.name||"Channel";
+ el("videoDescriptionView").textContent=v.description||"";
+ el("commentText").value="";
+ await refreshActions();
+ await loadComments();
+}
+
+function closeWatch() {
+ el("watchModal").classList.add("hidden");
+ el("playerContainer").replaceChildren();
+ currentVideo=null;
+}
+
+async function refreshActions() {
+ if(!currentVideo) return;
+ const v=currentVideo;
+ const [likesResult,subsResult]=await Promise.all([
+  db.from("video_likes").select("user_id").eq("video_id",v.id),
+  db.from("subscriptions").select("user_id")
+   .eq("channel_id",v.channel_id)
+ ]);
+ currentLikes=likesResult.data||[];
+ currentSubscriptions=subsResult.data||[];
+ const liked=currentLikes.some(x=>x.user_id===user?.id);
+ const subscribed=currentSubscriptions.some(x=>x.user_id===user?.id);
+ el("likeBtn").textContent=
+  (liked?"❤️ Liked":"♡ Like")+" ("+currentLikes.length+")";
+ el("subscribeBtn").textContent=
+  (subscribed?"Subscribed":"Subscribe")+
+  " ("+currentSubscriptions.length+")";
+ el("subscribeBtn").disabled=v.channels?.owner_id===user?.id;
+}
+
+async function toggleLike() {
+ if(!user) return alert("Please login first.");
+ if(!currentVideo) return;
+ const liked=currentLikes.some(x=>x.user_id===user.id);
+ const result=liked
+  ? await db.from("video_likes").delete()
+    .eq("video_id",currentVideo.id).eq("user_id",user.id)
+  : await db.from("video_likes").insert({
+    video_id:currentVideo.id,user_id:user.id
+   });
+ if(result.error) return alert(result.error.message);
+ await refreshActions();
+}
+
+async function toggleSubscribe() {
+ if(!user) return alert("Please login first.");
+ if(!currentVideo) return;
+ const v=currentVideo;
+ const subscribed=currentSubscriptions.some(x=>x.user_id===user.id);
+ const result=subscribed
+  ? await db.from("subscriptions").delete()
+    .eq("channel_id",v.channel_id).eq("user_id",user.id)
+  : await db.from("subscriptions").insert({
+    channel_id:v.channel_id,user_id:user.id
+   });
+ if(result.error) return alert(result.error.message);
+ await refreshActions();
+}
+
+async function loadComments() {
+ if(!currentVideo) return;
+ const id=currentVideo.id;
+ const {data,error}=await db.from("comments")
+  .select("id,content,created_at,profiles(display_name)")
+  .eq("video_id",id)
+  .order("created_at",{ascending:false}).limit(100);
+ if(error) return message(error.message);
+ if(!currentVideo || currentVideo.id!==id) return;
+ const box=el("comments");
+ box.replaceChildren();
+ (data||[]).forEach(c=>{
+  const div=document.createElement("div");
+  div.className="comment";
+  const name=document.createElement("strong");
+  name.textContent=c.profiles?.display_name||"User";
+  const p=document.createElement("p");
+  p.textContent=c.content;
+  div.append(name,p);
+  box.appendChild(div);
+ });
+ if(!data?.length) box.textContent="No comments yet.";
+}
+
+async function postComment() {
+ if(!user) return alert("Please login first.");
+ if(!currentVideo) return;
+ const content=el("commentText").value.trim();
+ if(!content || content.length>2000)
+  return alert("Enter a comment of 1-2000 characters.");
+ const {error}=await db.from("comments").insert({
+  video_id:currentVideo.id,user_id:user.id,content
+ });
+ if(error) return alert(error.message);
+ el("commentText").value="";
+ await loadComments();
+}
+
+initialize();
+</script>
+</body>
+</html>
